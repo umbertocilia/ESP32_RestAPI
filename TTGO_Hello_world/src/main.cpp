@@ -1,47 +1,263 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <aREST.h>
+#include <Station.h>
+#include "SPIFFS.h"
 
-#include <TFT_eSPI.h> 
-#include <SPI.h>
-#include "WiFi.h"
-#include <Wire.h>
-#include <Button2.h>
-#include "esp_adc_cal.h"
+File file;
 
-#ifndef TFT_DISPOFF
-#define TFT_DISPOFF 0x28
-#endif
+// WiFi parameters
+const char* ssid = "WINNIE_THE_POOH";
+const char* password = "dk7ll98jt9f2o0nuoiffppp9";
 
-#ifndef TFT_SLPIN
-#define TFT_SLPIN   0x10
-#endif
+// Create an instance of the server
+WiFiServer server(80);
 
-#define ADC_EN          14
-#define ADC_PIN         34
-#define BUTTON_1        35
-#define BUTTON_2        0
+// Create aREST instance
+aREST rest = aREST();
+Station staList[100];
 
-TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
+//Rest Station data 
+int Id = 0;
+String Barcode = "";
+byte FormatoCollo = 0;
+boolean PresenzaLogica = false;
+byte Trigger = 0;
+byte EchoTrigger = 0;
 
-//! Long time delay, it is recommended to use shallow sleep, which can effectively reduce the current consumption
-void espDelay(int ms) //use-> espDelay(6000);
-{   
-    esp_sleep_enable_timer_wakeup(ms * 1000);
-    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH,ESP_PD_OPTION_ON);
-    esp_light_sleep_start();
-}
 
-void setup()
+
+
+//HELPER
+ String getValue(String data, char separator, int index)
 {
-    Serial.begin(115200);
-    Serial.println("Start");
-    tft.init();
-    tft.fontHeight(2);
-    tft.setRotation(1);
-    tft.fillScreen(TFT_BLACK);
-    tft.drawString("Hello world", tft.width()/4, tft.height() / 2, 4);  //string,start x,start y, font weight {1;2;4;6;7;8}
+  int found = 0;
+  int strIndex[] = {0, -1};
+  int maxIndex = data.length()-1;
+
+  for(int i=0; i<=maxIndex && found<=index; i++){
+    if(data.charAt(i)==separator || i==maxIndex){
+        found++;
+        strIndex[0] = strIndex[1]+1;
+        strIndex[1] = (i == maxIndex) ? i+1 : i;
+    }
+  }
+
+  return found>index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
-void loop()
+
+void
+InitWiFi(){
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+ 
+  Serial.println("WiFi connected with IP: ");
+  Serial.println(WiFi.localIP());
+ 
+  server.begin();
+}
+
+
+int
+LoadFromFile(String command){
+
+  if(!SPIFFS.exists("/data.dat")) return 0;
+
+  file = SPIFFS.open("/data.dat", FILE_READ);
+ 
+  if (!file || !SPIFFS.exists("/data.dat")) {
+    Serial.println("There was an error opening the file for writing");
+    return 0;
+  }
+
+  file.read((uint8_t *)&staList, sizeof(staList));
+
+  Serial.println("Status loaded");
+
+  Serial.println("File size:");
+  Serial.println(file.size());
+  file.close();
+
+  return 1;
+}
+
+int 
+SaveToFile(String command){
+
+  file = SPIFFS.open("/data.dat", FILE_WRITE);
+
+  if (!file) {
+    Serial.println("There was an error opening the file for writing");
+    return 0;
+  }
+
+  if (file.write((const uint8_t *)&staList, sizeof(staList))) {
+    Serial.println("File was written");
+  } else {
+    Serial.println("File write failed");
+    return 0;
+  }
+ 
+  Serial.println("File size:");
+  Serial.println(file.size());
+  file.close();
+
+  return 1;
+}
+
+
+void
+InitStations(){
+
+  if(!LoadFromFile("")){
+
+    Serial.println("Station file not found, init stations.");
+
+    for(int i = 0; i < 100; i++){
+      staList[i].SetId(i+1);
+    }
+
+    SaveToFile("");
+  }
+
+  for(int i = 0; i < 100; i++){
+      staList[i].SetId(i+1);
+    }
+
+    SaveToFile("");
+
+}
+
+int 
+GetStatioToObserve(String command) {
+  
+  int index = command.toInt()-1;
+  Id = staList[index].GetId();
+
+  Serial.println((String)"Get station data station: " + String(Id));
+
+  Barcode = staList[index].GetBarcode();
+  FormatoCollo = staList[index].GetFormatoCollo();
+  PresenzaLogica = staList[index].GetPresenzaLogica();
+  Trigger = staList[index].GetTrigger();
+  EchoTrigger = staList[index].GetEchoTrigger();
+  
+  return 0;
+} 
+
+
+void
+MapRestVars(){
+  //Mappiamo le varabili per la REST API
+  rest.variable("Id",&Id);
+  rest.variable("Barcode",&Barcode);
+  rest.variable("FormatoCollo",&FormatoCollo);
+  rest.variable("PresenzaLogica",&PresenzaLogica);
+  rest.variable("Trigger",&Trigger);
+  rest.variable("EchoTrigger",&EchoTrigger);
+}
+
+int 
+formatEspData(String command){
+  bool formatted = SPIFFS.format();
+  if(formatted){
+    Serial.println("\n\nSuccess formatting");
+  }else{
+    Serial.println("\n\nError formatting");
+    return 0;
+  }
+  return 1;
+}
+
+
+
+
+int
+SetBarcode(String command){
+  
+  String staId = getValue(command,'|',0);
+  String barcode = getValue(command,'|',1);
+
+  Serial.println("SetBarcode");
+  Serial.println((String)"    Sta: " + staId);
+  Serial.println((String)"    Barcode " + barcode);
+
+  staList[staId.toInt()-1].SetBarcode(barcode);
+
+  
+  return 1;
+}
+
+int
+ListAllFiles(String command){
+ 
+  File root = SPIFFS.open("/");
+ 
+  File f = root.openNextFile();
+ 
+  while(f){
+ 
+      Serial.print("FILE: ");
+      Serial.println(f.name());
+ 
+      f = root.openNextFile();
+  }
+ return 1;
+}
+
+
+void 
+MapRestFunctions(){
+  
+  //Imposta stazione da inviare 
+  rest.function("GetStation",GetStatioToObserve);
+  //Carica stazioni da file
+  rest.function("LoadFromFile",LoadFromFile);
+  //Salva stazioni da file
+  rest.function("SaveToFile",SaveToFile);
+  //Formatta memoria
+  rest.function("Format",formatEspData);
+  //Stampa lista file su seriale
+  rest.function("ListFile",ListAllFiles);
+  //Carica stazioni da file
+  rest.function("SetBarcode",SetBarcode);
+
+}
+
+void 
+setup()
 {
 
+  //Inizializza Serial COM
+  Serial.begin(115200);
+
+  // Launch SPIFFS file system  
+  if (!SPIFFS.begin(true)) {
+    Serial.println("An Error has occurred while mounting SPIFFS");
+    return;
+  }
+ 
+  InitStations();
+  MapRestVars();
+  MapRestFunctions();
+  InitWiFi();
+
 }
+ 
+void loop() {
+ 
+  WiFiClient client = server.available();
+  if (client) {
+ 
+    while(!client.available()){
+      delay(5);
+    }
+    rest.handle(client);
+  }
+}
+
+
