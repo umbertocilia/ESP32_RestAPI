@@ -2,9 +2,7 @@
 #include <WiFi.h>
 #include <aREST.h>
 #include <Station.h>
-#include "SPIFFS.h"
 
-File file;
 
 // WiFi parameters
 const char* ssid = "WINNIE_THE_POOH";
@@ -15,7 +13,9 @@ WiFiServer server(80);
 
 // Create aREST instance
 aREST rest = aREST();
-Station staList[100];
+Station staList[32];
+//32 bit var to store events
+long events = 0;
 
 //Rest Station data 
 int Id = 0;
@@ -24,6 +24,7 @@ byte FormatoCollo = 0;
 boolean PresenzaLogica = false;
 byte Trigger = 0;
 byte EchoTrigger = 0;
+byte EventType = 0;
 
 
 
@@ -62,73 +63,13 @@ InitWiFi(){
 }
 
 
-int
-LoadFromFile(String command){
-
-  if(!SPIFFS.exists("/data.dat")) return 0;
-
-  file = SPIFFS.open("/data.dat", FILE_READ);
- 
-  if (!file || !SPIFFS.exists("/data.dat")) {
-    Serial.println("There was an error opening the file for writing");
-    return 0;
-  }
-
-  file.read((uint8_t *)&staList, sizeof(staList));
-
-  Serial.println("Status loaded");
-
-  Serial.println("File size:");
-  Serial.println(file.size());
-  file.close();
-
-  return 1;
-}
-
-int 
-SaveToFile(String command){
-
-  file = SPIFFS.open("/data.dat", FILE_WRITE);
-
-  if (!file) {
-    Serial.println("There was an error opening the file for writing");
-    return 0;
-  }
-
-  if (file.write((const uint8_t *)&staList, sizeof(staList))) {
-    Serial.println("File was written");
-  } else {
-    Serial.println("File write failed");
-    return 0;
-  }
- 
-  Serial.println("File size:");
-  Serial.println(file.size());
-  file.close();
-
-  return 1;
-}
-
 
 void
 InitStations(){
 
-  if(!LoadFromFile("")){
-
-    Serial.println("Station file not found, init stations.");
-
-    for(int i = 0; i < 100; i++){
-      staList[i].SetId(i+1);
-    }
-
-    SaveToFile("");
-  }
-
   for(int i = 0; i < 100; i++){
       staList[i].SetId(i+1);
     }
-
-    SaveToFile("");
 
 }
 
@@ -136,6 +77,7 @@ int
 GetStatioToObserve(String command) {
   
   int index = command.toInt()-1;
+  if(index < 0) return 0;
   Id = staList[index].GetId();
 
   Serial.println((String)"Get station data station: " + String(Id));
@@ -145,8 +87,9 @@ GetStatioToObserve(String command) {
   PresenzaLogica = staList[index].GetPresenzaLogica();
   Trigger = staList[index].GetTrigger();
   EchoTrigger = staList[index].GetEchoTrigger();
+  EventType = staList[index].GetEventType();
   
-  return 0;
+  return 1;
 } 
 
 
@@ -159,21 +102,9 @@ MapRestVars(){
   rest.variable("PresenzaLogica",&PresenzaLogica);
   rest.variable("Trigger",&Trigger);
   rest.variable("EchoTrigger",&EchoTrigger);
+  rest.variable("EventType",&EventType);
+  rest.variable("Events",&events);
 }
-
-int 
-formatEspData(String command){
-  bool formatted = SPIFFS.format();
-  if(formatted){
-    Serial.println("\n\nSuccess formatting");
-  }else{
-    Serial.println("\n\nError formatting");
-    return 0;
-  }
-  return 1;
-}
-
-
 
 
 int
@@ -192,21 +123,24 @@ SetBarcode(String command){
   return 1;
 }
 
-int
-ListAllFiles(String command){
- 
-  File root = SPIFFS.open("/");
- 
-  File f = root.openNextFile();
- 
-  while(f){
- 
-      Serial.print("FILE: ");
-      Serial.println(f.name());
- 
-      f = root.openNextFile();
-  }
- return 1;
+int 
+BalanceTrigger(String command){
+  
+  String staId = getValue(command,'|',0);
+  String trigger = getValue(command,'|',1);
+
+  Serial.println("BalanceTrigger");
+  Serial.println((String)"    Sta: " + staId);
+  Serial.println((String)"    Trigger " + trigger);
+
+  staList[staId.toInt()-1].BalanceTrigger(staId.toInt(),trigger.toInt());
+
+
+  int staIndex = staId.toInt() - 1;
+  //abbasso evento
+  bitWrite(events,staIndex,0);
+  return 1;
+
 }
 
 
@@ -216,15 +150,31 @@ MapRestFunctions(){
   //Imposta stazione da inviare 
   rest.function("GetStation",GetStatioToObserve);
   //Carica stazioni da file
-  rest.function("LoadFromFile",LoadFromFile);
-  //Salva stazioni da file
-  rest.function("SaveToFile",SaveToFile);
-  //Formatta memoria
-  rest.function("Format",formatEspData);
-  //Stampa lista file su seriale
-  rest.function("ListFile",ListAllFiles);
-  //Carica stazioni da file
   rest.function("SetBarcode",SetBarcode);
+  //
+  rest.function("BalanceTrigger",BalanceTrigger);
+
+}
+
+void
+RandomStaEvent(){
+
+  int staIndex = random(31);
+  Serial.println((String)"Random event station:  " + String(staIndex));
+
+  String randBarcode = String(random(10000000, 19999999));
+  Serial.println((String)"    barcode " + randBarcode);
+
+  staList[staIndex].SetBarcode(randBarcode);
+
+  bitWrite(events,staIndex,1);
+  Serial.println((String)"    set event bit" );
+
+  staList[staIndex].IncreaseTrigger();
+  Serial.println((String)"    increase trigger:  " + String(staList[staIndex].GetTrigger()));
+
+  staList[staIndex].SetEventType(1);
+  Serial.println((String)"    set event type:  " + String(1));
 
 }
 
@@ -235,16 +185,11 @@ setup()
   //Inizializza Serial COM
   Serial.begin(115200);
 
-  // Launch SPIFFS file system  
-  if (!SPIFFS.begin(true)) {
-    Serial.println("An Error has occurred while mounting SPIFFS");
-    return;
-  }
- 
+  InitWiFi();
   InitStations();
   MapRestVars();
   MapRestFunctions();
-  InitWiFi();
+  
 
 }
  
@@ -258,6 +203,11 @@ void loop() {
     }
     rest.handle(client);
   }
+
+  if(!events){
+    RandomStaEvent();
+  }
+
 }
 
 
