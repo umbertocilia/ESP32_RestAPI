@@ -185,16 +185,31 @@ MapRestFunctions(){
 
 
 void drawBarcode(String barcode){
-  tft.fillRect(130,10,100,50,TFT_BLACK);
+  tft.fillRect(130,10,100,20,TFT_BLACK);
   tft.setTextColor(TFT_WHITE);
 
   tft.setTextSize(1);
   tft.setCursor(130,10);      
-  tft.print("BARCODE:");
+  tft.print("BARCODE");
 
   tft.setTextSize(2);
-  tft.setCursor(130,30);      
+  tft.setCursor(130,25);      
   tft.print(barcode);
+}
+
+
+void drawStation(String st){
+  tft.drawRect(6,6,70,38,TFT_WHITE);
+  tft.fillRect(10,10,60,30,TFT_BLACK);
+  tft.setTextColor(TFT_WHITE);
+
+  tft.setTextSize(1);
+  tft.setCursor(15,10);      
+  tft.print("STATION");
+
+  tft.setTextSize(2);
+  tft.setCursor(15,25);      
+  tft.print(st);
 }
 
 
@@ -220,6 +235,7 @@ RandomStaEvent(){
 
    
   drawBarcode(randBarcode);
+  drawStation(String(staIndex+1));
 
 }
 
@@ -244,6 +260,13 @@ void drawBox()
   tft.fillRect(90,10,30,30,TFT_ORANGE);
   tft.fillRect(90,10,15,30,TFT_YELLOW);
   tft.drawRect(86,6,38,38,TFT_WHITE);
+}
+
+
+void drawPanel()
+{
+  //tft.fillRect(10,60,195,95,TFT_CYAN);
+  tft.drawRect(6,50,225,80,TFT_WHITE);
 }
 
 
@@ -278,6 +301,7 @@ setup()
   MapRestFunctions();
   
   drawBox();
+  drawPanel();
 }
  
 void loop() {
