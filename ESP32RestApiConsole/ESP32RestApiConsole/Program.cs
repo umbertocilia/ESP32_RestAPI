@@ -10,6 +10,8 @@ using System.Linq;
 
 namespace ESP32RestApiConsole
 {
+
+
     public class StationInfo
     {
         public int return_value { get; set; }
@@ -28,6 +30,7 @@ namespace ESP32RestApiConsole
     class Program
     {
         static HttpClient client = new HttpClient();
+
 
         static void ShowStation(StationInfo staInfo)
         {
@@ -79,15 +82,15 @@ namespace ESP32RestApiConsole
         }
 
 
-        static void Main()
+        static void Main(string[] args)
         {
-            RunAsync().GetAwaiter().GetResult();
+            RunAsync(args[0]).GetAwaiter().GetResult();
         }
 
-        static async Task RunAsync()
+        static async Task RunAsync(String ESPIP)
         {
             // Update port # in the following line.
-            client.BaseAddress = new Uri("http://192.168.1.12/");
+            client.BaseAddress = new Uri(ESPIP);
             client.DefaultRequestHeaders.Accept.Clear();
             client.DefaultRequestHeaders.Accept.Add(
                 new MediaTypeWithQualityHeaderValue("application/json"));

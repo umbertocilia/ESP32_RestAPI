@@ -2,6 +2,31 @@
 #include <WiFi.h>
 #include <aREST.h>
 #include <Station.h>
+#include <TFT_eSPI.h> 
+#include <SPI.h>
+
+
+#define BLACK_SPOT
+
+// Switch position and size
+#define FRAME_X 0
+#define FRAME_Y 0
+#define FRAME_W 220
+#define FRAME_H 110
+
+// Red zone size
+#define REDBUTTON_X FRAME_X
+#define REDBUTTON_Y FRAME_Y
+#define REDBUTTON_W (FRAME_W/2)
+#define REDBUTTON_H FRAME_H
+
+// Green zone size
+#define GREENBUTTON_X (REDBUTTON_X + REDBUTTON_W)
+#define GREENBUTTON_Y FRAME_Y
+#define GREENBUTTON_W (FRAME_W/2)
+#define GREENBUTTON_H FRAME_H
+
+
 
 
 // WiFi parameters
@@ -14,6 +39,8 @@ WiFiServer server(80);
 // Create aREST instance
 aREST rest = aREST();
 Station staList[32];
+TFT_eSPI tft = TFT_eSPI(135, 240); 
+
 //32 bit var to store events
 long events = 0;
 
@@ -156,6 +183,21 @@ MapRestFunctions(){
 
 }
 
+
+void drawBarcode(String barcode){
+  tft.fillRect(130,10,100,50,TFT_BLACK);
+  tft.setTextColor(TFT_WHITE);
+
+  tft.setTextSize(1);
+  tft.setCursor(130,10);      
+  tft.print("BARCODE:");
+
+  tft.setTextSize(2);
+  tft.setCursor(130,30);      
+  tft.print(barcode);
+}
+
+
 void
 RandomStaEvent(){
 
@@ -176,7 +218,35 @@ RandomStaEvent(){
   staList[staIndex].SetEventType(1);
   Serial.println((String)"    set event type:  " + String(1));
 
+   
+  drawBarcode(randBarcode);
+
 }
+
+
+//! Long time delay, it is recommended to use shallow sleep, which can effectively reduce the current consumption
+void espDelay(int ms)
+{   
+    esp_sleep_enable_timer_wakeup(ms * 1000);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH,ESP_PD_OPTION_ON);
+    esp_light_sleep_start();
+}
+
+
+
+void drawFrame()
+{
+  tft.drawRect(FRAME_X, FRAME_Y, FRAME_W, FRAME_H, TFT_COLMOD);
+}
+
+void drawBox()
+{
+  tft.fillRect(90,10,30,30,TFT_ORANGE);
+  tft.fillRect(90,10,15,30,TFT_YELLOW);
+  tft.drawRect(86,6,38,38,TFT_WHITE);
+}
+
+
 
 void 
 setup()
@@ -185,12 +255,29 @@ setup()
   //Inizializza Serial COM
   Serial.begin(115200);
 
+  tft.init();
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE);
+  tft.setCursor(0, 0);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextSize(1);
+
+  if (TFT_BL > 0) { // TFT_BL has been set in the TFT_eSPI library in the User Setup file TTGO_T_Display.h
+    pinMode(TFT_BL, OUTPUT); // Set backlight pin to output mode
+    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON); // Turn backlight on. TFT_BACKLIGHT_ON has been set in the TFT_eSPI library in the User Setup file TTGO_T_Display.h
+  }
+
+  tft.setSwapBytes(true);
+  //espDelay(5000);
+
   InitWiFi();
   InitStations();
   MapRestVars();
   MapRestFunctions();
   
-
+  drawBox();
 }
  
 void loop() {
