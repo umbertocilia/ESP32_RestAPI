@@ -2,8 +2,8 @@
 #include <WiFi.h>
 #include <aREST.h>
 #include <Station.h>
-#include <TFT_eSPI.h> 
-#include <SPI.h>
+#include <ESP_WiFiManager.h>
+#include <DisplayUI.h>
 
 
 #define BLACK_SPOT
@@ -26,7 +26,7 @@
 #define GREENBUTTON_W (FRAME_W/2)
 #define GREENBUTTON_H FRAME_H
 
-
+DisplayUI GUI;
 
 
 // WiFi parameters
@@ -39,7 +39,6 @@ WiFiServer server(80);
 // Create aREST instance
 aREST rest = aREST();
 Station staList[32];
-TFT_eSPI tft = TFT_eSPI(135, 240); 
 
 //32 bit var to store events
 long events = 0;
@@ -77,16 +76,16 @@ byte EventType = 0;
 
 void
 InitWiFi(){
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
+  //WiFi.begin(ssid, password);
+  //while (WiFi.status() != WL_CONNECTED) {
+    //delay(500);
+    //Serial.print(".");
+  //}
  
-  Serial.println("WiFi connected with IP: ");
-  Serial.println(WiFi.localIP());
+  //Serial.println("WiFi connected with IP: ");
+  //Serial.println(WiFi.localIP());
  
-  server.begin();
+  
 }
 
 
@@ -162,6 +161,7 @@ BalanceTrigger(String command){
 
   staList[staId.toInt()-1].BalanceTrigger(staId.toInt(),trigger.toInt());
 
+  GUI.DrawTrigger(String(staList[staId.toInt()-1].GetTrigger()) , String(staList[staId.toInt()-1].GetEchoTrigger()));
 
   int staIndex = staId.toInt() - 1;
   //abbasso evento
@@ -184,34 +184,6 @@ MapRestFunctions(){
 }
 
 
-void drawBarcode(String barcode){
-  tft.fillRect(130,10,100,20,TFT_BLACK);
-  tft.setTextColor(TFT_WHITE);
-
-  tft.setTextSize(1);
-  tft.setCursor(130,10);      
-  tft.print("BARCODE");
-
-  tft.setTextSize(2);
-  tft.setCursor(130,25);      
-  tft.print(barcode);
-}
-
-
-void drawStation(String st){
-  tft.drawRect(6,6,70,38,TFT_WHITE);
-  tft.fillRect(10,10,60,30,TFT_BLACK);
-  tft.setTextColor(TFT_WHITE);
-
-  tft.setTextSize(1);
-  tft.setCursor(15,10);      
-  tft.print("STATION");
-
-  tft.setTextSize(2);
-  tft.setCursor(15,25);      
-  tft.print(st);
-}
-
 
 void
 RandomStaEvent(){
@@ -233,9 +205,12 @@ RandomStaEvent(){
   staList[staIndex].SetEventType(1);
   Serial.println((String)"    set event type:  " + String(1));
 
-   
-  drawBarcode(randBarcode);
-  drawStation(String(staIndex+1));
+  
+  GUI.DrawStation(String(staIndex+1));
+  GUI.DrawBarcode(randBarcode);
+  GUI.DrawTrigger(String(staList[staIndex].GetTrigger()) , String(staList[staIndex].GetEchoTrigger()));
+  
+
 
 }
 
@@ -250,24 +225,6 @@ void espDelay(int ms)
 
 
 
-void drawFrame()
-{
-  tft.drawRect(FRAME_X, FRAME_Y, FRAME_W, FRAME_H, TFT_COLMOD);
-}
-
-void drawBox()
-{
-  tft.fillRect(90,10,30,30,TFT_ORANGE);
-  tft.fillRect(90,10,15,30,TFT_YELLOW);
-  tft.drawRect(86,6,38,38,TFT_WHITE);
-}
-
-
-void drawPanel()
-{
-  //tft.fillRect(10,60,195,95,TFT_CYAN);
-  tft.drawRect(6,50,225,80,TFT_WHITE);
-}
 
 
 
@@ -278,47 +235,43 @@ setup()
   //Inizializza Serial COM
   Serial.begin(115200);
 
-  tft.init();
-  tft.setRotation(1);
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE);
-  tft.setCursor(0, 0);
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextSize(1);
-
-  if (TFT_BL > 0) { // TFT_BL has been set in the TFT_eSPI library in the User Setup file TTGO_T_Display.h
-    pinMode(TFT_BL, OUTPUT); // Set backlight pin to output mode
-    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON); // Turn backlight on. TFT_BACKLIGHT_ON has been set in the TFT_eSPI library in the User Setup file TTGO_T_Display.h
-  }
-
-  tft.setSwapBytes(true);
+  
   //espDelay(5000);
 
-  InitWiFi();
+
+  ESP_WiFiManager ESP_wifiManager("AutoConnectAP");
+  ESP_wifiManager.autoConnect("AutoConnectAP");
+  if (WiFi.status() == WL_CONNECTED) { Serial.print(F("Connected. Local IP: "));Serial.println(WiFi.localIP()); GUI.DrawIP(WiFi.localIP().toString().c_str()); }
+  else { Serial.println(ESP_wifiManager.getStatus(WiFi.status())); }
+
+
+  server.begin();
+
   InitStations();
   MapRestVars();
   MapRestFunctions();
   
-  drawBox();
-  drawPanel();
+  GUI.DrawBox();
+  GUI.DrawPanel();
 }
  
 void loop() {
+
+  if (WiFi.status() == WL_CONNECTED) {
  
-  WiFiClient client = server.available();
-  if (client) {
- 
-    while(!client.available()){
+    WiFiClient client = server.available();
+    if (client) {
+
+      while(!client.available()){
       delay(5);
     }
     rest.handle(client);
-  }
+    }
 
-  if(!events){
-    RandomStaEvent();
+    if(!events){
+      RandomStaEvent();
+    }
   }
-
 }
 
 

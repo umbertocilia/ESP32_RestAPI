@@ -103,14 +103,22 @@ namespace ESP32RestApiConsole
 
                 while (sta.Events != 0)
                 {
+                    Console.WriteLine("Evento stazione rilevato");
                     sta = await GetStationWithEventAsync();
+
+                    Console.WriteLine("Ottengo dati stazione");
 
                     ShowStation(sta);
 
+                    Console.WriteLine("Pareggio Trigger");
+
                     sta = await BalanceTriggerWithEventAsync(sta);
+
+                    Console.WriteLine("Rilettura eventi");
 
                     sta = await GetStationWithEventAsync();
 
+                    System.Threading.Thread.Sleep(2000);
 
                 }
 
