@@ -2,8 +2,9 @@
 #include <WiFi.h>
 #include <aREST.h>
 #include <Station.h>
-#include <ESP_WiFiManager.h>
+#include <WiFiMulti.h>
 #include <DisplayUI.h>
+#include "esp_adc_cal.h"
 
 
 #define BLACK_SPOT
@@ -26,12 +27,13 @@
 #define GREENBUTTON_W (FRAME_W/2)
 #define GREENBUTTON_H FRAME_H
 
+#define ADC_PIN         34
+int vref = 1100;
+
 DisplayUI GUI;
 
+WiFiMulti wifiMulti;
 
-// WiFi parameters
-const char* ssid = "WINNIE_THE_POOH";
-const char* password = "dk7ll98jt9f2o0nuoiffppp9";
 
 // Create an instance of the server
 WiFiServer server(80);
@@ -73,18 +75,31 @@ byte EventType = 0;
   return found>index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
+void showVoltage()
+{
+    static uint64_t timeStamp = 0;
+    if (millis() - timeStamp > 3000) {
+        timeStamp = millis();
+        uint16_t v = analogRead(ADC_PIN);
+        float battery_voltage = ((float)v / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
+        String voltage = "Volt:" + String(battery_voltage) + "V";
+        Serial.println(voltage);
+    }
+
+}
+
 
 void
 InitWiFi(){
-  //WiFi.begin(ssid, password);
-  //while (WiFi.status() != WL_CONNECTED) {
-    //delay(500);
-    //Serial.print(".");
-  //}
- 
-  //Serial.println("WiFi connected with IP: ");
-  //Serial.println(WiFi.localIP());
- 
+  wifiMulti.addAP("whyphy", "esp82666");
+
+  Serial.println("Connecting Wifi...");
+  if(wifiMulti.run() == WL_CONNECTED) {
+      Serial.println("");
+      Serial.println("WiFi connected");
+      Serial.println("IP address: ");
+      Serial.println(WiFi.localIP());
+    }
   
 }
 
@@ -215,18 +230,6 @@ RandomStaEvent(){
 }
 
 
-//! Long time delay, it is recommended to use shallow sleep, which can effectively reduce the current consumption
-void espDelay(int ms)
-{   
-    esp_sleep_enable_timer_wakeup(ms * 1000);
-    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH,ESP_PD_OPTION_ON);
-    esp_light_sleep_start();
-}
-
-
-
-
-
 
 void 
 setup()
@@ -235,43 +238,54 @@ setup()
   //Inizializza Serial COM
   Serial.begin(115200);
 
-  
-  //espDelay(5000);
-
-
-  ESP_WiFiManager ESP_wifiManager("AutoConnectAP");
-  ESP_wifiManager.autoConnect("AutoConnectAP");
-  if (WiFi.status() == WL_CONNECTED) { Serial.print(F("Connected. Local IP: "));Serial.println(WiFi.localIP()); GUI.DrawIP(WiFi.localIP().toString().c_str()); }
-  else { Serial.println(ESP_wifiManager.getStatus(WiFi.status())); }
-
+  InitWiFi();
 
   server.begin();
 
   InitStations();
   MapRestVars();
   MapRestFunctions();
+
+
+
+  esp_adc_cal_characteristics_t adc_chars;
+  esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
+  //Check type of calibration value used to characterize ADC
+  if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
+      Serial.printf("eFuse Vref:%u mV", adc_chars.vref);
+      vref = adc_chars.vref;
+  } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
+        Serial.printf("Two Point --> coeff_a:%umV coeff_b:%umV\n", adc_chars.coeff_a, adc_chars.coeff_b);
+  } else {
+        Serial.println("Default Vref: 1100mV");
+  }
   
-  GUI.DrawBox();
-  GUI.DrawPanel();
+ 
 }
  
 void loop() {
-
-  if (WiFi.status() == WL_CONNECTED) {
- 
+  
+  if(wifiMulti.run() != WL_CONNECTED) {
+    Serial.println("WiFi not connected!");
+    delay(1000);
+  }else{
     WiFiClient client = server.available();
     if (client) {
-
       while(!client.available()){
       delay(5);
     }
-    rest.handle(client);
+      rest.handle(client);
     }
 
     if(!events){
       RandomStaEvent();
+      
+      GUI.DrawBox();
+      GUI.DrawPanel();
+      GUI.DrawIP(WiFi.localIP().toString().c_str());
     }
   }
+
 }
 
 
